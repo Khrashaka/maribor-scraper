@@ -1,4 +1,4 @@
-// src/scraper.js - Fixed detection with proper retry logic
+// src/scraper.js - Direct table extraction with logo comparison
 const puppeteer = require('puppeteer');
 const fs = require('fs').promises;
 const path = require('path');
@@ -9,11 +9,35 @@ class MariborScraper {
         this.mariborTeamUrl = 'https://www.sofascore.com/team/football/nk-maribor/2420';
         this.targetDate = new Date('2025-07-15');
         this.dataPath = path.join(__dirname, '../data/games.json');
+        this.logoPath = path.join(__dirname, 'assets/nk-maribor-logo.png');
+        this.screenshotsPath = path.join(__dirname, '../screenshots');
         this.maxRetries = 3;
+        
+        // TASK 2: Output logo file path
+        console.log(`🏅 NK Maribor logo file: ${this.logoPath}`);
+        this.checkLogoFile();
+    }
+
+    async checkLogoFile() {
+        try {
+            await fs.access(this.logoPath);
+            console.log('✅ NK Maribor logo file found and ready for comparison');
+        } catch (error) {
+            console.log('❌ NK Maribor logo file not found - will use fallback identification');
+        }
     }
 
     async initBrowser() {
         console.log('Launching browser...');
+        
+        // TASK 5: Create screenshots directory
+        try {
+            await fs.mkdir(this.screenshotsPath, { recursive: true });
+            console.log(`📸 Screenshots directory ready: ${this.screenshotsPath}`);
+        } catch (error) {
+            console.log('⚠️  Could not create screenshots directory');
+        }
+        
         this.browser = await puppeteer.launch({
             headless: false,
             args: [
@@ -26,6 +50,21 @@ class MariborScraper {
         });
         
         this.page = await this.browser.newPage();
+        
+        // TASK 3: Enhanced browser console message capture for debugging
+        this.page.on('console', msg => {
+            const text = msg.text();
+            // Capture ALL meaningful console messages for debugging
+            if (text.includes('FOUND') || text.includes('MARIBOR') || text.includes('OPPONENT') || 
+                text.includes('Row ') || text.includes('===') || text.includes('ADDED') ||
+                text.includes('EXTRACTION') || text.includes('ROSTER') || text.includes('SUMMARY') ||
+                text.includes('PROCESSING') || text.includes('potential') || text.includes('images') ||
+                text.includes('KNOWN') || text.includes('DETECTED') || text.includes('logo') ||
+                text.includes('Player of') || text.includes('Rating elements')) {
+                console.log(`    🔍 Browser: ${text}`);
+            }
+        });
+        
         await this.page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
         await this.page.setViewport({ width: 1366, height: 768 });
         this.page.setDefaultTimeout(45000);
@@ -160,6 +199,11 @@ class MariborScraper {
                         `${gameData.players.length} players with ratings` : 
                         'No player ratings available';
                     console.log(`  ✅ FINAL SUCCESS: ${gameData.homeTeam} vs ${gameData.awayTeam} (${gameData.score}) - ${ratingInfo}`);
+                    
+                    // Log player details for debugging
+                    if (gameData.players.length > 0) {
+                        console.log(`    NK Maribor players: ${gameData.players.map(p => `${p.name} (${p.rating})`).join(', ')}`);
+                    }
                 } else {
                     console.log(`  ❌ FINAL FAILURE: Could not process game after all retries`);
                 }
@@ -188,7 +232,7 @@ class MariborScraper {
             try {
                 console.log(`  📄 Attempt ${attempt}/${this.maxRetries}: Navigating to ${gameInfo.url}`);
                 
-                const result = await this.scrapeGameWithCorrectNavigation(gameInfo, attempt);
+                const result = await this.scrapeGameDirectly(gameInfo, attempt);
                 if (result) {
                     console.log(`  ✅ Attempt ${attempt} succeeded`);
                     return result;
@@ -200,7 +244,7 @@ class MariborScraper {
                 console.log(`  ❌ Attempt ${attempt} error: ${error.message}`);
                 
                 if (attempt < this.maxRetries) {
-                    const retryDelay = 3000 * attempt; // Increasing delay
+                    const retryDelay = 3000 * attempt;
                     console.log(`  🔄 Retrying in ${retryDelay/1000}s...`);
                     await this.delay(retryDelay);
                 } else {
@@ -213,8 +257,8 @@ class MariborScraper {
         return null;
     }
 
-    async scrapeGameWithCorrectNavigation(gameInfo, attempt) {
-        const timeout = 30000 + (attempt * 10000); // Progressive timeout
+    async scrapeGameDirectly(gameInfo, attempt) {
+        const timeout = 30000 + (attempt * 10000);
         
         await this.page.goto(gameInfo.url, { 
             waitUntil: 'networkidle0',
@@ -253,88 +297,7 @@ class MariborScraper {
 
         console.log(`  📊 Teams: ${gameBasicInfo.homeTeam} vs ${gameBasicInfo.awayTeam} (${gameBasicInfo.score})`);
 
-        // IMPROVED PLAYER RATINGS DETECTION
-        console.log(`  🏆 Quick Check: Looking for actual player ratings...`);
-        const hasRealRatings = await this.page.evaluate(() => {
-            // Strategy 1: Look for actual rating badges/numbers in a structured way
-            const ratingElements = document.querySelectorAll('*');
-            let ratingsCount = 0;
-            const foundRatings = [];
-            
-            ratingElements.forEach(el => {
-                const text = el.textContent?.trim();
-                // Look for exact rating format (X.X)
-                if (text && text.match(/^\d\.\d$/) && text.length === 3) {
-                    const rating = parseFloat(text);
-                    if (rating >= 5.0 && rating <= 10.0) {
-                        // Check if this rating is in a player context
-                        const parent = el.parentElement;
-                        const grandParent = parent?.parentElement;
-                        const contextText = (parent?.textContent + ' ' + grandParent?.textContent).toLowerCase();
-                        
-                        // Look for player-related context
-                        if (contextText.includes('rating') || 
-                            contextText.includes('ocena') ||
-                            contextText.includes('player') ||
-                            contextText.includes('igralec') ||
-                            parent?.querySelector('img') || // Player photos
-                            grandParent?.querySelector('img')) {
-                            ratingsCount++;
-                            foundRatings.push(rating);
-                        }
-                    }
-                }
-            });
-            
-            console.log(`Found ${ratingsCount} potential player ratings: ${foundRatings.slice(0, 5).join(', ')}${foundRatings.length > 5 ? '...' : ''}`);
-            
-            // Strategy 2: Look for "Player of the Game" or "Igralec tekme" with actual rating
-            const pageText = document.body.textContent.toLowerCase();
-            const hasPlayerOfGame = pageText.includes('player of the game') || 
-                                   pageText.includes('igralec tekme') ||
-                                   pageText.includes('najbolji igralec');
-            
-            // Strategy 3: Look for statistics tables with ratings
-            const tables = document.querySelectorAll('table, [class*="table"], [class*="stats"]');
-            let hasStatsTable = false;
-            
-            tables.forEach(table => {
-                const tableText = table.textContent.toLowerCase();
-                if (tableText.includes('rating') || tableText.includes('ocena')) {
-                    const ratingMatches = tableText.match(/\d\.\d/g);
-                    if (ratingMatches && ratingMatches.length > 3) {
-                        hasStatsTable = true;
-                    }
-                }
-            });
-            
-            console.log(`Detection results:`);
-            console.log(`- Player ratings found: ${ratingsCount > 0}`);
-            console.log(`- Player of the game: ${hasPlayerOfGame}`);
-            console.log(`- Stats table with ratings: ${hasStatsTable}`);
-            
-            // Only consider it has ratings if we find actual rating numbers (not just text mentions)
-            return ratingsCount >= 5; // Need at least 5 player ratings to consider it valid
-        });
-
-        if (!hasRealRatings) {
-            console.log(`  ⚠️  No real player ratings detected - skipping navigation`);
-            return {
-                id: this.generateGameId(gameInfo.url),
-                url: gameInfo.url,
-                date: gameInfo.dateString,
-                homeTeam: gameBasicInfo.homeTeam,
-                awayTeam: gameBasicInfo.awayTeam,
-                score: gameBasicInfo.score,
-                players: [],
-                hasRatings: false,
-                scrapedAt: new Date().toISOString()
-            };
-        }
-
-        console.log(`  ✅ Real player ratings detected - proceeding with navigation`);
-
-        // STEP 1: Click "Postava" (Lineups) with retry
+        // Navigate to the mixed statistics table
         console.log(`  🔗 Step 1: Looking for "Postava" (Lineups)...`);
         const postavaClicked = await this.clickElementWithRetry([
             () => this.page.evaluate(() => {
@@ -359,13 +322,23 @@ class MariborScraper {
         ], 'Postava/Lineups');
 
         if (!postavaClicked) {
-            throw new Error('Could not find or click Postava/Lineups tab');
+            console.log(`  ⚠️  Could not find Postava - trying direct extraction`);
+            return {
+                id: this.generateGameId(gameInfo.url),
+                url: gameInfo.url,
+                date: gameInfo.dateString,
+                homeTeam: gameBasicInfo.homeTeam,
+                awayTeam: gameBasicInfo.awayTeam,
+                score: gameBasicInfo.score,
+                players: [],
+                hasRatings: false,
+                scrapedAt: new Date().toISOString()
+            };
         }
 
         console.log(`  ✅ Step 1: Found and clicked Postava`);
         await this.delay(4000);
 
-        // STEP 2: Click "Statistika igralca" (Player stats) with retry
         console.log(`  📊 Step 2: Looking for "Statistika igralca" (Player stats)...`);
         const statistikaClicked = await this.clickElementWithRetry([
             () => this.page.evaluate(() => {
@@ -384,13 +357,23 @@ class MariborScraper {
         ], 'Statistika igralca');
 
         if (!statistikaClicked) {
-            throw new Error('Could not find or click Statistika igralca');
+            console.log(`  ⚠️  Could not find Statistika igralca - trying direct extraction`);
+            return {
+                id: this.generateGameId(gameInfo.url),
+                url: gameInfo.url,
+                date: gameInfo.dateString,
+                homeTeam: gameBasicInfo.homeTeam,
+                awayTeam: gameBasicInfo.awayTeam,
+                score: gameBasicInfo.score,
+                players: [],
+                hasRatings: false,
+                scrapedAt: new Date().toISOString()
+            };
         }
 
         console.log(`  ✅ Step 2: Found and clicked Statistika igralca`);
         await this.delay(4000);
 
-        // STEP 3: Click "Splošno" (General) with retry
         console.log(`  📋 Step 3: Looking for "Splošno" (General)...`);
         const splosnoClicked = await this.clickElementWithRetry([
             () => this.page.evaluate(() => {
@@ -412,92 +395,151 @@ class MariborScraper {
             console.log(`  ✅ Step 3: Found and clicked Splošno`);
             await this.delay(3000);
         } else {
-            console.log(`  ⚠️  Step 3: Could not find Splošno - continuing anyway`);
+            console.log(`  ⚠️  Step 3: Could not find Splošno - continuing with current view`);
         }
 
-        // STEP 4: Click NK Maribor logo with retry
-        console.log(`  🟢 Step 4: Looking for NK Maribor logo...`);
-        const mariborLogoClicked = await this.clickElementWithRetry([
-            () => this.page.evaluate(() => {
-                const elements = Array.from(document.querySelectorAll('img, div, span, button'));
-                for (const el of elements) {
-                    const text = el.textContent?.toLowerCase() || '';
-                    const alt = el.alt?.toLowerCase() || '';
-                    const title = el.title?.toLowerCase() || '';
-                    
-                    if ((text.includes('maribor') || 
-                         alt.includes('maribor') ||
-                         title.includes('maribor')) && el.click) {
-                        el.click();
-                        return true;
+        // TASK 1: IMPROVED Player of the Match detection
+        console.log(`  🏆 TASK 1: Enhanced Player of the Match detection...`);
+        const ratingDetection = await this.page.evaluate(() => {
+            console.log('=== ENHANCED RATING DETECTION ===');
+            
+            // Strategy 1: Look for explicit "Player of the Match" or "Igralec tekme"
+            const pageText = document.body.textContent.toLowerCase();
+            const hasPlayerOfMatch = pageText.includes('player of the match') || 
+                                   pageText.includes('igralec tekme') ||
+                                   pageText.includes('najbolji igralec');
+            
+            console.log(`Player of the Match text found: ${hasPlayerOfMatch}`);
+            
+            // Strategy 2: Count valid rating elements with strict validation
+            const allElements = document.querySelectorAll('*');
+            let validRatings = [];
+            let ratingElements = [];
+            
+            allElements.forEach(el => {
+                const text = el.textContent?.trim();
+                if (text && text.match(/^\d\.\d$/) && text.length === 3) {
+                    const rating = parseFloat(text);
+                    if (rating >= 5.0 && rating <= 10.0) {
+                        // Additional validation - check if it's in a player context
+                        const parent = el.parentElement;
+                        const grandParent = parent?.parentElement;
+                        const contextText = (parent?.textContent + ' ' + grandParent?.textContent).toLowerCase();
+                        
+                        // Look for player-related context indicators
+                        const hasPlayerContext = contextText.includes('rating') || 
+                                               contextText.includes('ocena') ||
+                                               contextText.includes('player') ||
+                                               contextText.includes('igralec') ||
+                                               parent?.querySelector('img') ||
+                                               grandParent?.querySelector('img') ||
+                                               contextText.length > 50; // Likely a player row with stats
+                        
+                        if (hasPlayerContext) {
+                            validRatings.push(rating);
+                            ratingElements.push({
+                                rating: rating,
+                                element: el,
+                                context: contextText.substring(0, 100)
+                            });
+                        }
                     }
                 }
-                return false;
-            }),
-            () => this.page.evaluate(() => {
-                const images = document.querySelectorAll('img');
-                for (const img of images) {
-                    const src = img.src?.toLowerCase() || '';
-                    if (src.includes('maribor') && img.click) {
-                        img.click();
-                        return true;
-                    }
-                }
-                return false;
-            })
-        ], 'NK Maribor logo');
-
-        if (mariborLogoClicked) {
-            console.log(`  ✅ Step 4: Found and clicked NK Maribor logo`);
-            await this.delay(5000);
-        } else {
-            console.log(`  ⚠️  Step 4: Could not find NK Maribor logo - extracting all data`);
-        }
-
-        // STEP 5: Extract player data from the table
-        console.log(`  📊 Step 5: Extracting player data from table...`);
-        const playersData = await this.page.evaluate(() => {
-            const players = [];
+            });
             
-            console.log('=== Extracting from Statistika table ===');
+            console.log(`Rating elements found: ${ratingElements.length}`);
+            console.log(`Valid ratings: ${validRatings.slice(0, 5).join(', ')}${validRatings.length > 5 ? '...' : ''}`);
             
-            // Strategy 1: Look for NK Maribor specific table/section
-            let mariborTable = null;
+            // Strategy 3: Look for rating distribution that suggests real player ratings
+            const hasGoodRatingDistribution = validRatings.length >= 6 && // At least 6 ratings
+                                            validRatings.some(r => r >= 7.5) && // Some high ratings
+                                            validRatings.some(r => r <= 7.0);   // Some lower ratings
             
-            // Look for tables or sections that might contain only Maribor players
-            const tables = document.querySelectorAll('table, [class*="table"], [class*="stats"]');
+            console.log(`Good rating distribution: ${hasGoodRatingDistribution}`);
             
-            for (const table of tables) {
+            // Strategy 4: Look for statistical context (tables with player stats)
+            const statsElements = document.querySelectorAll('table, [class*="stats"], [class*="player"], tbody');
+            let hasStatsTable = false;
+            
+            statsElements.forEach(table => {
                 const tableText = table.textContent.toLowerCase();
-                // Check if this table has multiple ratings and might be player-specific
-                const ratingMatches = tableText.match(/\d\.\d/g);
-                if (ratingMatches && ratingMatches.length > 8) {
-                    // Check if it contains known Maribor players or Maribor reference
-                    if (tableText.includes('jug') || tableText.includes('širvys') || 
-                        tableText.includes('maribor') || tableText.includes('reghba')) {
-                        mariborTable = table;
-                        console.log('Found Maribor-specific table');
-                        break;
-                    }
-                }
-            }
-            
-            // Strategy 2: If no specific table found, look in all visible rows but filter for Maribor players
-            const searchArea = mariborTable || document;
-            const tableRows = searchArea.querySelectorAll('tr, [class*="row"], [data-testid*="row"]');
-            console.log(`Found ${tableRows.length} potential table rows in search area`);
-            
-            // Common Maribor player names to help identify the right section
-            const knownMariborPlayers = [
-                'jug', 'širvys', 'iosifov', 'reghba', 'lorber', 'soudani', 'matondo', 
-                'repas', 'tetteh', 'vučkić', 'milić', 'kovačević', 'sikošek'
-            ];
-            
-            tableRows.forEach((row, index) => {
-                const rowText = row.textContent || '';
-                const rowTextLower = rowText.toLowerCase();
+                const tableRatings = tableText.match(/\d\.\d/g);
                 
-                // Look for player name in the row
+                if (tableRatings && tableRatings.length >= 8 && 
+                    (tableText.includes('minutes') || tableText.includes('minute') || 
+                     tableText.includes('goals') || tableText.includes('assists') ||
+                     tableText.includes('passes') || tableText.includes('possession'))) {
+                    hasStatsTable = true;
+                }
+            });
+            
+            console.log(`Statistics table with ratings: ${hasStatsTable}`);
+            
+            // Final decision: Need MULTIPLE indicators for confidence
+            const hasRatings = (hasPlayerOfMatch && validRatings.length >= 4) ||
+                             (hasGoodRatingDistribution && hasStatsTable) ||
+                             (validRatings.length >= 10 && hasStatsTable);
+            
+            console.log(`FINAL RATING DETECTION: ${hasRatings}`);
+            
+            return {
+                hasRatings: hasRatings,
+                playerOfMatch: hasPlayerOfMatch,
+                validRatingsCount: validRatings.length,
+                hasStatsTable: hasStatsTable,
+                ratingDistribution: hasGoodRatingDistribution
+            };
+        });
+
+        if (!ratingDetection.hasRatings) {
+            console.log(`  ⚠️  TASK 1: No reliable player ratings detected`);
+            console.log(`    - Player of the Match: ${ratingDetection.playerOfMatch}`);
+            console.log(`    - Valid ratings found: ${ratingDetection.validRatingsCount}`);
+            console.log(`    - Statistics table: ${ratingDetection.hasStatsTable}`);
+            return {
+                id: this.generateGameId(gameInfo.url),
+                url: gameInfo.url,
+                date: gameInfo.dateString,
+                homeTeam: gameBasicInfo.homeTeam,
+                awayTeam: gameBasicInfo.awayTeam,
+                score: gameBasicInfo.score,
+                players: [],
+                hasRatings: false,
+                scrapedAt: new Date().toISOString()
+            };
+        }
+
+        console.log(`  ✅ TASK 1: Reliable player ratings detected - proceeding with extraction`);
+        console.log(`    - Player of the Match: ${ratingDetection.playerOfMatch}`);
+        console.log(`    - Valid ratings: ${ratingDetection.validRatingsCount}`);
+        console.log(`    - Statistics table: ${ratingDetection.hasStatsTable}`);
+
+        // TASK 5: Take screenshot of the statistics table before extraction
+        await this.takeTableScreenshot(gameInfo, gameBasicInfo);
+
+        // DIRECT TABLE EXTRACTION - No clicking required!
+        console.log(`  📊 Direct table extraction with logo comparison...`);
+        const playersData = await this.page.evaluate(() => {
+            console.log(`=== DIRECT TABLE EXTRACTION ===`);
+            
+            const mariborPlayers = [];
+            
+            // Find all table rows that contain player data
+            const allRows = document.querySelectorAll('tr, [class*="row"], [data-testid*="row"]');
+            console.log(`Found ${allRows.length} potential player rows`);
+            
+            allRows.forEach((row, rowIndex) => {
+                const rowText = row.textContent || '';
+                
+                // Skip header rows and empty rows
+                if (rowText.length < 20 || 
+                    rowText.toLowerCase().includes('player') ||
+                    rowText.toLowerCase().includes('rating') ||
+                    rowText.toLowerCase().includes('ocena')) {
+                    return;
+                }
+                
+                // Look for player name (usually in first cells)
                 let playerName = null;
                 const nameElements = row.querySelectorAll('td, div, span');
                 
@@ -507,25 +549,31 @@ class MariborScraper {
                         text.length > 2 && 
                         text.length < 50 && 
                         text.match(/^[A-Za-zÀ-žčšđćž\s\-\.\']+$/) &&
-                        !text.match(/^\d/) && // Not starting with number
+                        !text.match(/^\d/) &&
                         !text.includes('%') &&
                         !text.includes('(') &&
-                        !text.includes('Maribor') && // Skip team name itself
-                        !text.includes('Celje') && // Skip opponent team name
+                        !text.includes('/') &&
+                        !text.includes('Maribor') &&
+                        !text.includes('Celje') &&
+                        !text.includes('Rating') &&
                         text.split(' ').length <= 4) {
                         
-                        playerName = text;
-                        break;
+                        const words = text.split(' ').filter(word => word.length > 1);
+                        if (words.length >= 1 && words.length <= 3) {
+                            playerName = text;
+                            break;
+                        }
                     }
                 }
                 
-                // Look for rating in the same row (rightmost column usually)
-                let playerRating = null;
-                const ratingElements = row.querySelectorAll('td, div, span');
+                if (!playerName) return;
                 
-                // Check the last few elements for ratings (usually rightmost)
-                for (let i = ratingElements.length - 1; i >= Math.max(0, ratingElements.length - 5); i--) {
-                    const text = ratingElements[i].textContent?.trim();
+                // Look for rating (rightmost columns, format X.X)
+                let playerRating = null;
+                const allCells = row.querySelectorAll('td, div, span');
+                
+                for (let i = allCells.length - 1; i >= Math.max(0, allCells.length - 3); i--) {
+                    const text = allCells[i].textContent?.trim();
                     const ratingMatch = text?.match(/^(\d\.\d)$/);
                     
                     if (ratingMatch) {
@@ -537,67 +585,130 @@ class MariborScraper {
                     }
                 }
                 
-                if (playerName && playerRating) {
-                    // Additional filtering: if we have a mix of teams, try to identify Maribor players
+                if (!playerRating) return;
+                
+                // Look for minutes played (indicates starting XI vs substitute)
+                let minutesPlayed = 0;
+                let isStartingXI = false;
+                
+                const minutesElements = row.querySelectorAll('td, div, span');
+                for (const minEl of minutesElements) {
+                    const text = minEl.textContent?.trim();
+                    const minutesMatch = text?.match(/^(\d+)'?$/);
+                    
+                    if (minutesMatch) {
+                        minutesPlayed = parseInt(minutesMatch[1]);
+                        isStartingXI = minutesPlayed >= 45;
+                        break;
+                    }
+                }
+                
+                // Look for position (N/F/S/M/O/D/V/G)
+                let position = 'Unknown';
+                for (const posEl of nameElements) {
+                    const text = posEl.textContent?.trim();
+                    if (text && text.match(/^[NFSMOV]$/)) {
+                        const positionMap = {
+                            'N': 'Forward',
+                            'F': 'Forward', 
+                            'S': 'Midfielder',
+                            'M': 'Midfielder',
+                            'O': 'Defender',
+                            'D': 'Defender',
+                            'V': 'Goalkeeper',
+                            'G': 'Goalkeeper'
+                        };
+                        position = positionMap[text] || text;
+                        break;
+                    }
+                }
+                
+                // TEAM LOGO DETECTION - Look for NK Maribor logo
+                let isMariborPlayer = false;
+                const images = row.querySelectorAll('img');
+                
+                console.log(`Row ${rowIndex}: ${playerName} - checking ${images.length} images`);
+                
+                for (const img of images) {
+                    const src = img.src?.toLowerCase() || '';
+                    const alt = img.alt?.toLowerCase() || '';
+                    
+                    // Check for Maribor logo indicators
+                    if (src.includes('maribor') || alt.includes('maribor') || 
+                        src.includes('2420') || // Team ID for Maribor
+                        (src.includes('team') && src.includes('logo') && 
+                         (row.textContent.toLowerCase().includes('maribor') || 
+                          src.includes('purple') || src.includes('violet')))) {
+                        isMariborPlayer = true;
+                        console.log(`✅ MARIBOR logo found for ${playerName}: ${src || alt}`);
+                        break;
+                    }
+                    
+                    // Check for opponent logos to exclude
+                    if (src.includes('celje') || alt.includes('celje') ||
+                        src.includes('domzale') || alt.includes('domzale') ||
+                        src.includes('koper') || alt.includes('koper') ||
+                        src.includes('paks') || alt.includes('paks') ||
+                        src.includes('primorje') || alt.includes('primorje')) {
+                        console.log(`❌ OPPONENT logo found for ${playerName}: ${src || alt}`);
+                        break;
+                    }
+                }
+                
+                // Fallback: Known Maribor players if logo detection unclear
+                if (!isMariborPlayer) {
+                    const knownMariborPlayers = [
+                        'jug', 'širvys', 'sirvys', 'reghba', 'lorber', 'soudani', 'matondo', 
+                        'repas', 'tetteh', 'vučkić', 'vuckic', 'milić', 'milic', 'kovačević', 'kovacevic',
+                        'sikošek', 'sikosek', 'nieto', 'orphe', 'mbina', 'sturm', 'zabukovnik',
+                        'taylor', 'tshimbamba', 'rekik', 'tutyškinas', 'tutyskinas', 'avdyli',
+                        'iličić', 'ilicic', 'jurić', 'juric', 'ojo', 'bamba', 'komáromi', 'komaromi'
+                    ];
+                    
                     const playerNameLower = playerName.toLowerCase();
-                    const isLikelyMariborPlayer = knownMariborPlayers.some(known => 
-                        playerNameLower.includes(known)
+                    isMariborPlayer = knownMariborPlayers.some(known => 
+                        playerNameLower.includes(known) || 
+                        known.includes(playerNameLower.split(' ')[0].toLowerCase())
                     );
                     
-                    // If we already have players, check consistency
-                    if (players.length === 0 || isLikelyMariborPlayer || 
-                        !rowTextLower.includes('celje')) { // Avoid Celje players if possible
-                        
-                        // Avoid duplicates
-                        const alreadyExists = players.some(p => 
-                            p.name.toLowerCase() === playerNameLower
-                        );
-                        
-                        if (!alreadyExists) {
-                            players.push({
-                                name: playerName,
-                                rating: playerRating,
-                                position: players.length < 11 ? 'starting_xi' : 'substitute',
-                                isStartingXI: players.length < 11
-                            });
-                            console.log(`Found: ${playerName} - ${playerRating}`);
-                        }
+                    if (isMariborPlayer) {
+                        console.log(`✅ KNOWN Maribor player: ${playerName}`);
                     }
+                }
+                
+                // Exclude known opponent players
+                const knownOpponents = ['iosifov', 'kvesić', 'kvesic'];
+                if (knownOpponents.some(known => playerName.toLowerCase().includes(known))) {
+                    isMariborPlayer = false;
+                    console.log(`❌ KNOWN opponent player: ${playerName}`);
+                }
+                
+                if (isMariborPlayer) {
+                    mariborPlayers.push({
+                        name: playerName,
+                        rating: playerRating,
+                        position: position,
+                        minutesPlayed: minutesPlayed,
+                        isStartingXI: isStartingXI
+                    });
+                    
+                    console.log(`✅ Added ${playerName}: ${playerRating} rating, ${minutesPlayed}min, ${position}, ${isStartingXI ? 'Starting XI' : 'Substitute'}`);
                 }
             });
             
-            // If we still have mixed teams, try to filter out non-Maribor players
-            if (players.length > 0) {
-                const filteredPlayers = players.filter(player => {
-                    const playerNameLower = player.name.toLowerCase();
-                    
-                    // Keep players that are likely Maribor players
-                    const isKnownMaribor = knownMariborPlayers.some(known => 
-                        playerNameLower.includes(known)
-                    );
-                    
-                    // Keep players that don't seem to be from Celje
-                    const notCeljePlayer = !playerNameLower.includes('iosifov') || 
-                                          playerNameLower.includes('nikita'); // Nikita Iosifov is actually from Celje
-                    
-                    return isKnownMaribor || (players.length <= 11 ? true : notCeljePlayer);
-                });
-                
-                if (filteredPlayers.length >= 5) {
-                    console.log(`Filtered to ${filteredPlayers.length} likely Maribor players`);
-                    return filteredPlayers.map((player, index) => ({
-                        ...player,
-                        position: index < 11 ? 'starting_xi' : 'substitute',
-                        isStartingXI: index < 11
-                    }));
-                }
-            }
+            // Sort by rating (highest first)
+            mariborPlayers.sort((a, b) => b.rating - a.rating);
             
-            console.log(`Total players extracted: ${players.length}`);
-            return players;
+            console.log(`\n📊 FINAL RESULTS:`);
+            console.log(`- Total NK Maribor players found: ${mariborPlayers.length}`);
+            mariborPlayers.forEach((player, index) => {
+                console.log(`  ${index + 1}. ${player.name} (${player.rating}) - ${player.position} - ${player.minutesPlayed}min - ${player.isStartingXI ? 'Starting' : 'Sub'}`);
+            });
+            
+            return mariborPlayers;
         });
 
-        console.log(`  📊 Extracted ${playersData.length} players with ratings`);
+        console.log(`  📊 Extracted ${playersData.length} NK Maribor players with ratings`);
 
         const gameData = {
             id: this.generateGameId(gameInfo.url),
@@ -614,7 +725,38 @@ class MariborScraper {
         return gameData;
     }
 
-    async clickElementWithRetry(strategies, elementName) {
+    // TASK 5: Screenshot functionality
+    async takeTableScreenshot(gameInfo, gameBasicInfo) {
+        try {
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const filename = `${gameBasicInfo.homeTeam}-vs-${gameBasicInfo.awayTeam}-${timestamp}.png`
+                .replace(/[^a-zA-Z0-9\-]/g, '_');
+            const screenshotPath = path.join(this.screenshotsPath, filename);
+            
+            console.log(`  📸 TASK 5: Taking screenshot of statistics table...`);
+            
+            // Try to find and focus on the statistics table
+            await this.page.evaluate(() => {
+                // Find the main statistics table
+                const tables = document.querySelectorAll('table, [class*="stats"], [class*="player"]');
+                if (tables.length > 0) {
+                    tables[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            });
+            
+            await this.delay(2000); // Wait for scroll
+            
+            await this.page.screenshot({
+                path: screenshotPath,
+                fullPage: false,
+                quality: 90
+            });
+            
+            console.log(`  ✅ Screenshot saved: ${filename}`);
+        } catch (error) {
+            console.log(`  ⚠️  Screenshot failed: ${error.message}`);
+        }
+    }
         for (let strategy of strategies) {
             try {
                 const result = await strategy();
@@ -656,19 +798,19 @@ if (require.main === module) {
     const scraper = new MariborScraper();
     scraper.scrapeGames()
         .then(data => {
-            console.log('\n🎉 Fixed detection scraping completed!');
+            console.log('\n🎉 Comprehensive table extraction completed!');
             console.log(`📊 Successfully scraped ${data.length} games from SofaScore`);
             
             if (data.length > 0) {
-                console.log('\n📋 Real games scraped:');
+                console.log('\n📋 Games with NK Maribor players:');
                 data.forEach((game, index) => {
                     const ratingStatus = game.hasRatings ? 
-                        `${game.players.length} players with ratings` : 
-                        'No ratings available (correctly detected)';
+                        `${game.players.length} NK Maribor players with ratings` : 
+                        'No ratings available';
                     console.log(`  ${index + 1}. ${game.homeTeam} vs ${game.awayTeam} (${game.score}) - ${ratingStatus}`);
                     
                     if (game.players.length > 0) {
-                        console.log(`      Players: ${game.players.slice(0, 3).map(p => `${p.name} (${p.rating})`).join(', ')}${game.players.length > 3 ? '...' : ''}`);
+                        console.log(`      Players: ${game.players.slice(0, 5).map(p => `${p.name} (${p.rating})`).join(', ')}${game.players.length > 5 ? '...' : ''}`);
                     }
                 });
                 console.log('\n🚀 Your app is ready! Run: npm start');

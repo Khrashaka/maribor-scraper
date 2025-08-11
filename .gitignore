@@ -6,3 +6,4 @@ logs/
 *.log
 .vscode/
 .DS_Store
+!src/assets/nk-maribor-logo.png
