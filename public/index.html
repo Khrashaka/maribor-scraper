@@ -17,6 +17,7 @@
         <div class="page-navigation">
             <button id="gameViewBtn" class="nav-btn active">📊 Game View</button>
             <button id="positionViewBtn" class="nav-btn">⚽ Position View</button>
+            <button id="formationViewBtn" class="nav-btn">🏟️ Best Formation</button>
         </div>
 
         <!-- Page 1: Game View (Original functionality) -->
@@ -74,7 +75,7 @@
             </div>
         </div>
 
-        <!-- Page 2: Position View (New functionality) -->
+        <!-- Page 2: Position View -->
         <div id="positionViewPage" class="page">
             <div class="controls">
                 <div class="control-group">
@@ -127,6 +128,100 @@
 
             <div id="positionNoData" class="no-data" style="display: none;">
                 <p>No players found for this position. Try refreshing the data or selecting a different position.</p>
+            </div>
+        </div>
+
+        <!-- Page 3: Formation View (New) -->
+        <div id="formationViewPage" class="page">
+            <div class="formation-info">
+                <h2>🏟️ Best 4-4-2 Formation</h2>
+                <div class="formation-stats">
+                    <span id="formationAvgRating">Team Avg: 0.0</span>
+                    <span id="formationTotalGames">Total Games: 0</span>
+                </div>
+            </div>
+
+            <div class="football-field">
+                <div class="field-container">
+                    <!-- Forwards (Top) -->
+                    <div class="position-line forwards">
+                        <div class="player-position" id="LF">
+                            <div class="position-label">LF</div>
+                            <div class="player-name">-</div>
+                            <div class="player-rating">0.0</div>
+                        </div>
+                        <div class="player-position" id="RF">
+                            <div class="position-label">RF</div>
+                            <div class="player-name">-</div>
+                            <div class="player-rating">0.0</div>
+                        </div>
+                    </div>
+
+                    <!-- Midfielders -->
+                    <div class="position-line midfielders">
+                        <div class="player-position" id="LM">
+                            <div class="position-label">LM</div>
+                            <div class="player-name">-</div>
+                            <div class="player-rating">0.0</div>
+                        </div>
+                        <div class="player-position" id="LCM">
+                            <div class="position-label">LCM</div>
+                            <div class="player-name">-</div>
+                            <div class="player-rating">0.0</div>
+                        </div>
+                        <div class="player-position" id="RCM">
+                            <div class="position-label">RCM</div>
+                            <div class="player-name">-</div>
+                            <div class="player-rating">0.0</div>
+                        </div>
+                        <div class="player-position" id="RM">
+                            <div class="position-label">RM</div>
+                            <div class="player-name">-</div>
+                            <div class="player-rating">0.0</div>
+                        </div>
+                    </div>
+
+                    <!-- Defenders -->
+                    <div class="position-line defenders">
+                        <div class="player-position" id="LB">
+                            <div class="position-label">LB</div>
+                            <div class="player-name">-</div>
+                            <div class="player-rating">0.0</div>
+                        </div>
+                        <div class="player-position" id="LCB">
+                            <div class="position-label">LCB</div>
+                            <div class="player-name">-</div>
+                            <div class="player-rating">0.0</div>
+                        </div>
+                        <div class="player-position" id="RCB">
+                            <div class="position-label">RCB</div>
+                            <div class="player-name">-</div>
+                            <div class="player-rating">0.0</div>
+                        </div>
+                        <div class="player-position" id="RB">
+                            <div class="position-label">RB</div>
+                            <div class="player-name">-</div>
+                            <div class="player-rating">0.0</div>
+                        </div>
+                    </div>
+
+                    <!-- Goalkeeper (Bottom) -->
+                    <div class="position-line goalkeeper">
+                        <div class="player-position" id="GK">
+                            <div class="position-label">GK</div>
+                            <div class="player-name">-</div>
+                            <div class="player-rating">0.0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="formationLoading" class="loading" style="display: none;">
+                Calculating best formation...
+            </div>
+
+            <div id="formationNoData" class="no-data" style="display: none;">
+                <p>Not enough player data to create formation. Please refresh data or wait for more games to be scraped.</p>
             </div>
         </div>
     </div>

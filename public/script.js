@@ -4,6 +4,7 @@ class MariborApp {
         this.currentGame = null;
         this.filteredPlayers = [];
         this.positionData = {};
+        this.bestFormation = {};
         this.currentPage = 'gameView';
         
         this.initializeElements();
@@ -15,8 +16,10 @@ class MariborApp {
         // Navigation elements
         this.gameViewBtn = document.getElementById('gameViewBtn');
         this.positionViewBtn = document.getElementById('positionViewBtn');
+        this.formationViewBtn = document.getElementById('formationViewBtn');
         this.gameViewPage = document.getElementById('gameViewPage');
         this.positionViewPage = document.getElementById('positionViewPage');
+        this.formationViewPage = document.getElementById('formationViewPage');
 
         // Game view elements
         this.gameSelect = document.getElementById('gameSelect');
@@ -42,12 +45,19 @@ class MariborApp {
         this.positionPlayersBody = document.getElementById('positionPlayersBody');
         this.positionLoading = document.getElementById('positionLoading');
         this.positionNoData = document.getElementById('positionNoData');
+
+        // Formation view elements
+        this.formationAvgRating = document.getElementById('formationAvgRating');
+        this.formationTotalGames = document.getElementById('formationTotalGames');
+        this.formationLoading = document.getElementById('formationLoading');
+        this.formationNoData = document.getElementById('formationNoData');
     }
 
     attachEventListeners() {
         // Page navigation
         this.gameViewBtn.addEventListener('click', () => this.switchPage('gameView'));
         this.positionViewBtn.addEventListener('click', () => this.switchPage('positionView'));
+        this.formationViewBtn.addEventListener('click', () => this.switchPage('formationView'));
 
         // Game view listeners
         this.gameSelect.addEventListener('change', (e) => {
@@ -78,14 +88,20 @@ class MariborApp {
         // Update navigation buttons
         this.gameViewBtn.classList.toggle('active', page === 'gameView');
         this.positionViewBtn.classList.toggle('active', page === 'positionView');
+        this.formationViewBtn.classList.toggle('active', page === 'formationView');
 
         // Update page visibility
         this.gameViewPage.classList.toggle('active', page === 'gameView');
         this.positionViewPage.classList.toggle('active', page === 'positionView');
+        this.formationViewPage.classList.toggle('active', page === 'formationView');
 
         if (page === 'positionView') {
             this.calculatePositionData();
             this.renderPositionView();
+        } else if (page === 'formationView') {
+            this.calculatePositionData();
+            this.calculateBestFormation();
+            this.renderFormationView();
         }
     }
 
@@ -156,6 +172,124 @@ class MariborApp {
                 playerData.worstRating = 0;
             }
         });
+    }
+
+    calculateBestFormation() {
+        // Get all unique players and their best positions
+        const playerBestPositions = {};
+        
+        Object.values(this.positionData).forEach(playerData => {
+            const playerName = playerData.name;
+            
+            if (!playerBestPositions[playerName] || 
+                playerData.averageRating > playerBestPositions[playerName].averageRating) {
+                playerBestPositions[playerName] = {
+                    name: playerName,
+                    position: playerData.position,
+                    averageRating: playerData.averageRating,
+                    gamesPlayed: playerData.gamesPlayed,
+                    bestRating: playerData.bestRating
+                };
+            }
+        });
+
+        // Group players by their best positions
+        const playersByPosition = {
+            'Goalkeeper': [],
+            'Defender': [],
+            'Midfielder': [],
+            'Forward': []
+        };
+
+        Object.values(playerBestPositions).forEach(player => {
+            if (playersByPosition[player.position] && player.averageRating > 0) {
+                playersByPosition[player.position].push(player);
+            }
+        });
+
+        // Sort each position by average rating (descending)
+        Object.keys(playersByPosition).forEach(position => {
+            playersByPosition[position].sort((a, b) => b.averageRating - a.averageRating);
+        });
+
+        // Select best formation (4-4-2)
+        this.bestFormation = {
+            'GK': playersByPosition['Goalkeeper'][0] || null,
+            'LB': playersByPosition['Defender'][0] || null,
+            'LCB': playersByPosition['Defender'][1] || null,
+            'RCB': playersByPosition['Defender'][2] || null,
+            'RB': playersByPosition['Defender'][3] || null,
+            'LM': playersByPosition['Midfielder'][0] || null,
+            'LCM': playersByPosition['Midfielder'][1] || null,
+            'RCM': playersByPosition['Midfielder'][2] || null,
+            'RM': playersByPosition['Midfielder'][3] || null,
+            'LF': playersByPosition['Forward'][0] || null,
+            'RF': playersByPosition['Forward'][1] || null
+        };
+    }
+
+    renderFormationView() {
+        const positions = ['GK', 'LB', 'LCB', 'RCB', 'RB', 'LM', 'LCM', 'RCM', 'RM', 'LF', 'RF'];
+        
+        let totalRating = 0;
+        let totalGames = 0;
+        let playersWithData = 0;
+
+        positions.forEach(positionId => {
+            const positionElement = document.getElementById(positionId);
+            const player = this.bestFormation[positionId];
+            
+            if (player && positionElement) {
+                const nameElement = positionElement.querySelector('.player-name');
+                const ratingElement = positionElement.querySelector('.player-rating');
+                
+                // Truncate long names
+                const displayName = player.name.length > 12 ? 
+                    player.name.substring(0, 12) + '...' : player.name;
+                
+                nameElement.textContent = displayName;
+                nameElement.title = player.name; // Full name on hover
+                ratingElement.textContent = player.averageRating.toFixed(1);
+                
+                // Color-code the rating
+                ratingElement.className = 'player-rating';
+                if (player.averageRating >= 8.0) {
+                    ratingElement.classList.add('rating-excellent');
+                } else if (player.averageRating >= 7.0) {
+                    ratingElement.classList.add('rating-good');
+                } else if (player.averageRating >= 6.0) {
+                    ratingElement.classList.add('rating-average');
+                } else {
+                    ratingElement.classList.add('rating-poor');
+                }
+                
+                totalRating += player.averageRating;
+                totalGames += player.gamesPlayed;
+                playersWithData++;
+            } else if (positionElement) {
+                const nameElement = positionElement.querySelector('.player-name');
+                const ratingElement = positionElement.querySelector('.player-rating');
+                
+                nameElement.textContent = '-';
+                nameElement.title = 'No player available';
+                ratingElement.textContent = '0.0';
+                ratingElement.className = 'player-rating rating-none';
+            }
+        });
+
+        // Update formation stats
+        const avgRating = playersWithData > 0 ? totalRating / playersWithData : 0;
+        this.formationAvgRating.textContent = `Team Avg: ${avgRating.toFixed(1)}`;
+        this.formationTotalGames.textContent = `Total Games: ${totalGames}`;
+
+        // Show/hide appropriate elements
+        if (playersWithData >= 8) { // Need at least 8 players for a reasonable formation
+            this.formationLoading.style.display = 'none';
+            this.formationNoData.style.display = 'none';
+        } else {
+            this.formationNoData.style.display = 'block';
+            this.formationLoading.style.display = 'none';
+        }
     }
 
     renderPositionView() {
