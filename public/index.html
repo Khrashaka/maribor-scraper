@@ -13,56 +13,121 @@
             <p>Player ratings from games since July 15, 2025</p>
         </header>
 
-        <div class="controls">
-            <div class="control-group">
-                <label for="gameSelect">Select Game:</label>
-                <select id="gameSelect">
-                    <option value="">Loading games...</option>
-                </select>
+        <!-- Navigation between pages -->
+        <div class="page-navigation">
+            <button id="gameViewBtn" class="nav-btn active">📊 Game View</button>
+            <button id="positionViewBtn" class="nav-btn">⚽ Position View</button>
+        </div>
+
+        <!-- Page 1: Game View (Original functionality) -->
+        <div id="gameViewPage" class="page active">
+            <div class="controls">
+                <div class="control-group">
+                    <label for="gameSelect">Select Game:</label>
+                    <select id="gameSelect">
+                        <option value="">Loading games...</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="positionFilter">Filter by Position:</label>
+                    <select id="positionFilter">
+                        <option value="all">All Players</option>
+                        <option value="starting">Starting XI Only</option>
+                        <option value="substitutes">Substitutes Only</option>
+                    </select>
+                </div>
+                
+                <button id="refreshBtn" class="btn-primary">🔄 Refresh Data</button>
             </div>
-            
-            <div class="control-group">
-                <label for="positionFilter">Filter by Position:</label>
-                <select id="positionFilter">
-                    <option value="all">All Players</option>
-                    <option value="starting">Starting XI Only</option>
-                    <option value="substitutes">Substitutes Only</option>
-                </select>
+
+            <div class="game-info" id="gameInfo" style="display: none;">
+                <h2 id="gameTitle"></h2>
+                <div class="game-details">
+                    <span id="gameDate"></span>
+                    <span id="gameScore"></span>
+                </div>
             </div>
-            
-            <button id="refreshBtn" class="btn-primary">🔄 Refresh Data</button>
-        </div>
 
-        <div class="game-info" id="gameInfo" style="display: none;">
-            <h2 id="gameTitle"></h2>
-            <div class="game-details">
-                <span id="gameDate"></span>
-                <span id="gameScore"></span>
+            <div class="table-container">
+                <table id="playersTable" style="display: none;">
+                    <thead>
+                        <tr>
+                            <th>Player Name</th>
+                            <th>Rating</th>
+                            <th>Position</th>
+                            <th>Status</th>
+                            <th>Performance</th>
+                        </tr>
+                    </thead>
+                    <tbody id="playersBody">
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="loading" class="loading">
+                Loading player data...
+            </div>
+
+            <div id="noData" class="no-data" style="display: none;">
+                <p>No player data available. Click "Refresh Data" to scrape latest games.</p>
             </div>
         </div>
 
-        <div class="table-container">
-            <table id="playersTable" style="display: none;">
-                <thead>
-                    <tr>
-                        <th>Player Name</th>
-                        <th>Rating</th>
-                        <th>Position</th>
-                        <th>Status</th>
-                        <th>Performance</th>
-                    </tr>
-                </thead>
-                <tbody id="playersBody">
-                </tbody>
-            </table>
-        </div>
+        <!-- Page 2: Position View (New functionality) -->
+        <div id="positionViewPage" class="page">
+            <div class="controls">
+                <div class="control-group">
+                    <label for="positionSelect">Select Position:</label>
+                    <select id="positionSelect">
+                        <option value="Forward">⚡ Forward</option>
+                        <option value="Midfielder">🔄 Midfielder</option>
+                        <option value="Defender">🛡️ Defender</option>
+                        <option value="Goalkeeper">🥅 Goalkeeper</option>
+                    </select>
+                </div>
 
-        <div id="loading" class="loading">
-            Loading player data...
-        </div>
+                <div class="control-group">
+                    <label for="sortBy">Sort by:</label>
+                    <select id="sortBy">
+                        <option value="rating">Average Rating</option>
+                        <option value="games">Games Played</option>
+                        <option value="name">Player Name</option>
+                    </select>
+                </div>
+            </div>
 
-        <div id="noData" class="no-data" style="display: none;">
-            <p>No player data available. Click "Refresh Data" to scrape latest games.</p>
+            <div class="position-info" id="positionInfo">
+                <h2 id="positionTitle">⚡ Forward Players</h2>
+                <div class="position-stats">
+                    <span id="playerCount">0 players</span>
+                    <span id="avgRating">Avg: 0.0</span>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table id="positionPlayersTable">
+                    <thead>
+                        <tr>
+                            <th>Player Name</th>
+                            <th>Average Rating</th>
+                            <th>Games Played</th>
+                            <th>Best Performance</th>
+                            <th>Performance Level</th>
+                        </tr>
+                    </thead>
+                    <tbody id="positionPlayersBody">
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="positionLoading" class="loading" style="display: none;">
+                Calculating position averages...
+            </div>
+
+            <div id="positionNoData" class="no-data" style="display: none;">
+                <p>No players found for this position. Try refreshing the data or selecting a different position.</p>
+            </div>
         </div>
     </div>
 

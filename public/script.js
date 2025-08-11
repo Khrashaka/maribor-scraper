@@ -3,6 +3,8 @@ class MariborApp {
         this.games = [];
         this.currentGame = null;
         this.filteredPlayers = [];
+        this.positionData = {};
+        this.currentPage = 'gameView';
         
         this.initializeElements();
         this.attachEventListeners();
@@ -10,6 +12,13 @@ class MariborApp {
     }
 
     initializeElements() {
+        // Navigation elements
+        this.gameViewBtn = document.getElementById('gameViewBtn');
+        this.positionViewBtn = document.getElementById('positionViewBtn');
+        this.gameViewPage = document.getElementById('gameViewPage');
+        this.positionViewPage = document.getElementById('positionViewPage');
+
+        // Game view elements
         this.gameSelect = document.getElementById('gameSelect');
         this.positionFilter = document.getElementById('positionFilter');
         this.refreshBtn = document.getElementById('refreshBtn');
@@ -21,9 +30,26 @@ class MariborApp {
         this.playersBody = document.getElementById('playersBody');
         this.loading = document.getElementById('loading');
         this.noData = document.getElementById('noData');
+
+        // Position view elements
+        this.positionSelect = document.getElementById('positionSelect');
+        this.sortBy = document.getElementById('sortBy');
+        this.positionInfo = document.getElementById('positionInfo');
+        this.positionTitle = document.getElementById('positionTitle');
+        this.playerCount = document.getElementById('playerCount');
+        this.avgRating = document.getElementById('avgRating');
+        this.positionPlayersTable = document.getElementById('positionPlayersTable');
+        this.positionPlayersBody = document.getElementById('positionPlayersBody');
+        this.positionLoading = document.getElementById('positionLoading');
+        this.positionNoData = document.getElementById('positionNoData');
     }
 
     attachEventListeners() {
+        // Page navigation
+        this.gameViewBtn.addEventListener('click', () => this.switchPage('gameView'));
+        this.positionViewBtn.addEventListener('click', () => this.switchPage('positionView'));
+
+        // Game view listeners
         this.gameSelect.addEventListener('change', (e) => {
             this.selectGame(e.target.value);
         });
@@ -35,6 +61,32 @@ class MariborApp {
         this.refreshBtn.addEventListener('click', () => {
             this.refreshData();
         });
+
+        // Position view listeners
+        this.positionSelect.addEventListener('change', (e) => {
+            this.renderPositionView();
+        });
+
+        this.sortBy.addEventListener('change', (e) => {
+            this.renderPositionView();
+        });
+    }
+
+    switchPage(page) {
+        this.currentPage = page;
+
+        // Update navigation buttons
+        this.gameViewBtn.classList.toggle('active', page === 'gameView');
+        this.positionViewBtn.classList.toggle('active', page === 'positionView');
+
+        // Update page visibility
+        this.gameViewPage.classList.toggle('active', page === 'gameView');
+        this.positionViewPage.classList.toggle('active', page === 'positionView');
+
+        if (page === 'positionView') {
+            this.calculatePositionData();
+            this.renderPositionView();
+        }
     }
 
     async loadGames() {
@@ -48,6 +100,7 @@ class MariborApp {
                 if (this.games.length > 0) {
                     this.selectGame(this.games[0].id);
                 }
+                this.calculatePositionData();
             } else {
                 this.showNoData();
             }
@@ -55,6 +108,138 @@ class MariborApp {
             console.error('Error loading games:', error);
             this.showNoData();
         }
+    }
+
+    calculatePositionData() {
+        this.positionData = {};
+
+        // Aggregate all players across all games by position
+        this.games.forEach(game => {
+            if (game.players && game.players.length > 0) {
+                game.players.forEach(player => {
+                    const key = `${player.name}_${player.position}`;
+                    
+                    if (!this.positionData[key]) {
+                        this.positionData[key] = {
+                            name: player.name,
+                            position: player.position,
+                            ratings: [],
+                            games: []
+                        };
+                    }
+                    
+                    this.positionData[key].ratings.push(player.rating);
+                    this.positionData[key].games.push({
+                        opponent: game.awayTeam === 'NK Maribor' ? game.homeTeam : game.awayTeam,
+                        date: game.date,
+                        rating: player.rating
+                    });
+                });
+            }
+        });
+
+        // Calculate averages and additional stats
+        Object.keys(this.positionData).forEach(key => {
+            const playerData = this.positionData[key];
+            const validRatings = playerData.ratings.filter(r => r !== null && r !== undefined);
+            
+            if (validRatings.length > 0) {
+                const sum = validRatings.reduce((a, b) => a + b, 0);
+                playerData.averageRating = Math.round((sum / validRatings.length) * 10) / 10;
+                playerData.gamesPlayed = validRatings.length;
+                playerData.bestRating = Math.max(...validRatings);
+                playerData.worstRating = Math.min(...validRatings);
+            } else {
+                playerData.averageRating = 0;
+                playerData.gamesPlayed = 0;
+                playerData.bestRating = 0;
+                playerData.worstRating = 0;
+            }
+        });
+    }
+
+    renderPositionView() {
+        const selectedPosition = this.positionSelect.value;
+        const sortBy = this.sortBy.value;
+
+        // Update position info header
+        const positionEmojis = {
+            'Forward': '⚡',
+            'Midfielder': '🔄',
+            'Defender': '🛡️',
+            'Goalkeeper': '🥅'
+        };
+
+        this.positionTitle.textContent = `${positionEmojis[selectedPosition]} ${selectedPosition} Players`;
+
+        // Filter players by selected position
+        const positionPlayers = Object.values(this.positionData)
+            .filter(player => player.position === selectedPosition && player.gamesPlayed > 0);
+
+        // Update stats
+        this.playerCount.textContent = `${positionPlayers.length} players`;
+        
+        if (positionPlayers.length > 0) {
+            const avgRating = positionPlayers.reduce((sum, p) => sum + p.averageRating, 0) / positionPlayers.length;
+            this.avgRating.textContent = `Avg: ${(Math.round(avgRating * 10) / 10).toFixed(1)}`;
+        } else {
+            this.avgRating.textContent = 'Avg: 0.0';
+        }
+
+        // Sort players
+        positionPlayers.sort((a, b) => {
+            switch (sortBy) {
+                case 'rating':
+                    return b.averageRating - a.averageRating;
+                case 'games':
+                    return b.gamesPlayed - a.gamesPlayed;
+                case 'name':
+                    return a.name.localeCompare(b.name);
+                default:
+                    return b.averageRating - a.averageRating;
+            }
+        });
+
+        // Render table
+        this.positionPlayersBody.innerHTML = '';
+
+        if (positionPlayers.length === 0) {
+            const row = document.createElement('tr');
+            row.innerHTML = '<td colspan="5" style="text-align: center; color: #666;">No players found for this position</td>';
+            this.positionPlayersBody.appendChild(row);
+            return;
+        }
+
+        positionPlayers.forEach(player => {
+            const row = document.createElement('tr');
+            
+            const nameCell = document.createElement('td');
+            nameCell.textContent = player.name;
+            
+            const avgRatingCell = document.createElement('td');
+            const avgRatingSpan = this.createRatingElement(player.averageRating);
+            avgRatingCell.appendChild(avgRatingSpan);
+            
+            const gamesCell = document.createElement('td');
+            gamesCell.textContent = player.gamesPlayed;
+            gamesCell.style.textAlign = 'center';
+            
+            const bestRatingCell = document.createElement('td');
+            const bestRatingSpan = this.createRatingElement(player.bestRating, true);
+            bestRatingCell.appendChild(bestRatingSpan);
+            
+            const performanceCell = document.createElement('td');
+            performanceCell.innerHTML = this.getPerformanceText(player.averageRating);
+            performanceCell.className = 'performance';
+            
+            row.appendChild(nameCell);
+            row.appendChild(avgRatingCell);
+            row.appendChild(gamesCell);
+            row.appendChild(bestRatingCell);
+            row.appendChild(performanceCell);
+            
+            this.positionPlayersBody.appendChild(row);
+        });
     }
 
     populateGameSelect() {
@@ -173,11 +358,12 @@ class MariborApp {
         });
     }
 
-    createRatingElement(rating) {
+    createRatingElement(rating, isSmall = false) {
         const span = document.createElement('span');
         span.className = 'rating';
+        if (isSmall) span.className += ' rating-small';
         
-        if (rating === null || rating === undefined) {
+        if (rating === null || rating === undefined || rating === 0) {
             span.textContent = 'N/A';
             span.className += ' rating-none';
         } else {
@@ -234,7 +420,7 @@ class MariborApp {
     }
 
     getPerformanceText(rating) {
-        if (rating === null || rating === undefined) {
+        if (rating === null || rating === undefined || rating === 0) {
             return '<span style="color: #6c757d;">Not Rated</span>';
         } else if (rating >= 8.0) {
             return '<span style="color: #28a745;">Excellent</span>';
