@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NK Maribor Player Ratings</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🟢 NK Maribor Player Ratings</h1>
+            <p>Player ratings from games since July 15, 2025</p>
+        </header>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="gameSelect">Select Game:</label>
+                <select id="gameSelect">
+                    <option value="">Loading games...</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="positionFilter">Filter by Position:</label>
+                <select id="positionFilter">
+                    <option value="all">All Players</option>
+                    <option value="starting">Starting XI Only</option>
+                    <option value="substitutes">Substitutes Only</option>
+                </select>
+            </div>
+            
+            <button id="refreshBtn" class="btn-primary">🔄 Refresh Data</button>
+        </div>
+
+        <div class="game-info" id="gameInfo" style="display: none;">
+            <h2 id="gameTitle"></h2>
+            <div class="game-details">
+                <span id="gameDate"></span>
+                <span id="gameScore"></span>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <table id="playersTable" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Player Name</th>
+                        <th>Rating</th>
+                        <th>Position Status</th>
+                        <th>Performance</th>
+                    </tr>
+                </thead>
+                <tbody id="playersBody">
+                </tbody>
+            </table>
+        </div>
+
+        <div id="loading" class="loading">
+            Loading player data...
+        </div>
+
+        <div id="noData" class="no-data" style="display: none;">
+            <p>No player data available. Click "Refresh Data" to scrape latest games.</p>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
