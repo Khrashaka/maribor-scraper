@@ -136,7 +136,7 @@ class MariborApp {
 
         if (this.filteredPlayers.length === 0) {
             const row = document.createElement('tr');
-            row.innerHTML = '<td colspan="4" style="text-align: center; color: #666;">No players found for selected filter</td>';
+            row.innerHTML = '<td colspan="5" style="text-align: center; color: #666;">No players found for selected filter</td>';
             this.playersBody.appendChild(row);
             return;
         }
@@ -152,8 +152,12 @@ class MariborApp {
             ratingCell.appendChild(ratingSpan);
             
             const positionCell = document.createElement('td');
-            const positionBadge = this.createPositionBadge(player.isStartingXI);
+            const positionBadge = this.createPositionBadge(player.position);
             positionCell.appendChild(positionBadge);
+            
+            const statusCell = document.createElement('td');
+            const statusBadge = this.createStatusBadge(player.isStartingXI);
+            statusCell.appendChild(statusBadge);
             
             const performanceCell = document.createElement('td');
             performanceCell.innerHTML = this.getPerformanceText(player.rating);
@@ -162,6 +166,7 @@ class MariborApp {
             row.appendChild(nameCell);
             row.appendChild(ratingCell);
             row.appendChild(positionCell);
+            row.appendChild(statusCell);
             row.appendChild(performanceCell);
             
             this.playersBody.appendChild(row);
@@ -191,9 +196,31 @@ class MariborApp {
         return span;
     }
 
-    createPositionBadge(isStartingXI) {
+    createPositionBadge(position) {
         const badge = document.createElement('span');
         badge.className = 'position-badge';
+        badge.textContent = position || 'Unknown';
+        
+        // Add position-specific styling
+        const pos = (position || '').toLowerCase();
+        if (pos.includes('forward') || pos.includes('striker')) {
+            badge.className += ' position-forward';
+        } else if (pos.includes('midfielder') || pos.includes('midfield')) {
+            badge.className += ' position-midfielder';
+        } else if (pos.includes('defender') || pos.includes('defence')) {
+            badge.className += ' position-defender';
+        } else if (pos.includes('goalkeeper') || pos.includes('keeper')) {
+            badge.className += ' position-goalkeeper';
+        } else {
+            badge.className += ' position-unknown';
+        }
+        
+        return badge;
+    }
+
+    createStatusBadge(isStartingXI) {
+        const badge = document.createElement('span');
+        badge.className = 'status-badge';
         
         if (isStartingXI) {
             badge.textContent = 'Starting XI';

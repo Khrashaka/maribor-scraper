@@ -12,7 +12,7 @@ body {
 }
 
 .container {
-    max-width: 1200px;
+    max-width: 1400px;
     margin: 0 auto;
     padding: 20px;
 }
@@ -132,11 +132,13 @@ select:focus {
     border-radius: 15px;
     overflow: hidden;
     box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+    overflow-x: auto;
 }
 
 table {
     width: 100%;
     border-collapse: collapse;
+    min-width: 800px;
 }
 
 thead {
@@ -145,7 +147,7 @@ thead {
 }
 
 th, td {
-    padding: 15px 20px;
+    padding: 15px 12px;
     text-align: left;
     border-bottom: 1px solid #eee;
 }
@@ -183,6 +185,36 @@ tbody tr:hover {
 .rating-none { background: #6c757d; }
 
 .position-badge {
+    padding: 4px 10px;
+    border-radius: 15px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: white;
+}
+
+.position-forward {
+    background: linear-gradient(45deg, #dc3545, #e83e8c);
+}
+
+.position-midfielder {
+    background: linear-gradient(45deg, #17a2b8, #007bff);
+}
+
+.position-defender {
+    background: linear-gradient(45deg, #28a745, #20c997);
+}
+
+.position-goalkeeper {
+    background: linear-gradient(45deg, #6f42c1, #e83e8c);
+}
+
+.position-unknown {
+    background: #6c757d;
+}
+
+.status-badge {
     padding: 4px 10px;
     border-radius: 15px;
     font-size: 0.85rem;
@@ -238,8 +270,17 @@ tbody tr:hover {
     }
     
     th, td {
-        padding: 10px 15px;
+        padding: 10px 8px;
         font-size: 0.9rem;
+    }
+    
+    .table-container {
+        overflow-x: auto;
+    }
+    
+    .container {
+        max-width: 100%;
+        padding: 15px;
     }
 }
 
@@ -250,4 +291,4 @@ tbody tr:hover {
 
 .table-container, .game-info {
     animation: fadeIn 0.5s ease-out;
-};
+}

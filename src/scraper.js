@@ -1,4 +1,4 @@
-// src/scraper.js - Refined and optimized NK Maribor player scraper
+// src/scraper.js - Fixed NK Maribor player scraper with position extraction
 const puppeteer = require('puppeteer');
 const fs = require('fs').promises;
 const path = require('path');
@@ -307,74 +307,275 @@ class MariborScraper {
     }
 
     async navigateToStats() {
-        // Click Postava
-        const postavaClicked = await this.page.evaluate(() => {
-            const elements = Array.from(document.querySelectorAll('*'));
-            const postava = elements.find(el => {
-                const text = el.textContent?.toLowerCase() || '';
-                return (text.includes('postava') || text.includes('lineup')) && el.click;
-            });
-            if (postava) {
-                postava.click();
-                return true;
+        console.log('🔄 Starting navigation to player statistics...');
+        
+        // Step 1: Navigate to Lineups/Postava - be very specific about what we click
+        console.log('🎯 Step 1: Looking for Lineup tab...');
+        const lineupClicked = await this.page.evaluate(() => {
+            // Strategy 1: Look for actual navigation buttons/links with specific characteristics
+            const lineupCandidates = document.querySelectorAll('a, button, [role="tab"], [role="button"]');
+            
+            for (const element of lineupCandidates) {
+                const text = element.textContent?.trim().toLowerCase() || '';
+                const parentText = element.parentElement?.textContent?.trim().toLowerCase() || '';
+                
+                // Must be a short text element (navigation tabs are usually short)
+                if (text.length > 20 || parentText.length > 100) continue;
+                
+                // Must contain lineup/postava
+                if ((text === 'postava' || text === 'lineup' || text === 'lineups') && 
+                    typeof element.click === 'function') {
+                    element.click();
+                    return { method: 'exact-match', text: element.textContent?.trim() };
+                }
             }
-            return false;
+            
+            // Strategy 2: Look for elements in navigation-like containers
+            const navContainers = document.querySelectorAll('[class*="nav"], [class*="tab"], [class*="menu"]');
+            for (const container of navContainers) {
+                const buttons = container.querySelectorAll('a, button, span, div');
+                for (const btn of buttons) {
+                    const text = btn.textContent?.trim().toLowerCase() || '';
+                    if ((text === 'postava' || text === 'lineup' || text === 'lineups') && 
+                        text.length <= 20 && typeof btn.click === 'function') {
+                        btn.click();
+                        return { method: 'nav-container', text: btn.textContent?.trim() };
+                    }
+                }
+            }
+            
+            return null;
         });
 
-        if (!postavaClicked) return false;
-        await this.delay(3000);
+        if (!lineupClicked) {
+            console.log('❌ Could not find Lineup tab');
+            return false;
+        }
+        
+        console.log(`✅ Clicked lineup tab: "${lineupClicked.text}" (method: ${lineupClicked.method})`);
+        await this.delay(4000);
 
-        // Click Statistika igralca
+        // Step 2: Navigate to Player Statistics - be very specific
+        console.log('🎯 Step 2: Looking for Player Statistics tab...');
+        
+        // Wait for content to load
+        await this.page.waitForFunction(() => {
+            return document.querySelectorAll('button, a, [role="tab"]').length > 10;
+        }, { timeout: 10000 }).catch(() => {
+            console.log('⚠️  Timeout waiting for navigation elements');
+        });
+
         const statsClicked = await this.page.evaluate(() => {
-            const elements = Array.from(document.querySelectorAll('*'));
-            const stats = elements.find(el => {
-                const text = el.textContent?.toLowerCase() || '';
-                return (text.includes('statistika igralca') || text.includes('player stat')) && el.click;
-            });
-            if (stats) {
-                stats.click();
-                return true;
+            // Strategy 1: Look for buttons/links with exact statistics text
+            const statsCandidates = document.querySelectorAll('a, button, [role="tab"], [role="button"]');
+            
+            for (const element of statsCandidates) {
+                const text = element.textContent?.trim().toLowerCase() || '';
+                
+                // Must be short and specific
+                if (text.length > 30) continue;
+                
+                // Look for player statistics variations
+                if ((text.includes('player stat') || 
+                     text.includes('statistika igralca') || 
+                     text === 'player stats' ||
+                     text === 'statistika' && text.length <= 15) &&
+                    typeof element.click === 'function') {
+                    element.click();
+                    return { method: 'exact-stats', text: element.textContent?.trim() };
+                }
             }
-            return false;
+            
+            // Strategy 2: Look in tab-like containers
+            const tabContainers = document.querySelectorAll('[class*="tab"], [role="tablist"], [class*="nav"]');
+            for (const container of tabContainers) {
+                const tabs = container.querySelectorAll('button, a, span, div');
+                for (const tab of tabs) {
+                    const text = tab.textContent?.trim().toLowerCase() || '';
+                    if (text.length <= 25 && 
+                        (text.includes('stat') || text.includes('player')) &&
+                        typeof tab.click === 'function') {
+                        tab.click();
+                        return { method: 'tab-container', text: tab.textContent?.trim() };
+                    }
+                }
+            }
+            
+            // Strategy 3: Look for elements with "Player stats" in nearby headings
+            const headings = document.querySelectorAll('h1, h2, h3, h4');
+            for (const heading of headings) {
+                if (heading.textContent?.toLowerCase().includes('player')) {
+                    const container = heading.closest('div, section');
+                    if (container) {
+                        const buttons = container.querySelectorAll('button, a');
+                        for (const btn of buttons) {
+                            const text = btn.textContent?.trim().toLowerCase() || '';
+                            if (text.includes('stat') && text.length <= 20 && typeof btn.click === 'function') {
+                                btn.click();
+                                return { method: 'heading-context', text: btn.textContent?.trim() };
+                            }
+                        }
+                    }
+                }
+            }
+            
+            return null;
         });
 
-        if (!statsClicked) return false;
-        await this.delay(3000);
-
-        // Click Splošno (optional)
-        await this.page.evaluate(() => {
-            const elements = Array.from(document.querySelectorAll('*'));
-            const splosno = elements.find(el => {
-                const text = el.textContent?.toLowerCase() || '';
-                return (text.includes('splošno') || text.includes('general')) && el.click;
+        if (!statsClicked) {
+            console.log('❌ Could not find Player Statistics tab');
+            
+            // Debug: Show what short navigation-like elements are available
+            const debugInfo = await this.page.evaluate(() => {
+                const shortElements = [];
+                const candidates = document.querySelectorAll('a, button, [role="tab"], [role="button"]');
+                
+                candidates.forEach((el, index) => {
+                    if (index < 15) { // Limit output
+                        const text = el.textContent?.trim() || '';
+                        if (text.length > 0 && text.length <= 30) {
+                            shortElements.push(text);
+                        }
+                    }
+                });
+                
+                return shortElements;
             });
-            if (splosno) splosno.click();
+            
+            console.log('🔍 Available short clickable elements (first 15):');
+            debugInfo.forEach(text => console.log(`   - "${text}"`));
+            return false;
+        }
+
+        console.log(`✅ Clicked statistics: "${statsClicked.text}" (method: ${statsClicked.method})`);
+        await this.delay(4000);
+
+        // Step 3: Verify we're on a page with player statistics table
+        console.log('🎯 Step 3: Verifying we reached player statistics...');
+        
+        const verification = await this.page.evaluate(() => {
+            // Look for actual table structures with player data
+            const tables = document.querySelectorAll('table, [role="table"]');
+            let playerTableFound = false;
+            let ratingCount = 0;
+            let playerNameCount = 0;
+            
+            for (const table of tables) {
+                const cells = table.querySelectorAll('td, th, [role="cell"]');
+                let tableRatings = 0;
+                let tablePlayerNames = 0;
+                
+                for (const cell of cells) {
+                    const text = cell.textContent?.trim();
+                    
+                    // Count ratings (X.X format, standalone)
+                    if (text && text.match(/^\d\.\d$/) && text.length === 3) {
+                        const rating = parseFloat(text);
+                        if (rating >= 5.0 && rating <= 10.0) {
+                            tableRatings++;
+                        }
+                    }
+                    
+                    // Count player names (text that looks like names, not too long)
+                    if (text && text.length > 3 && text.length < 30 && 
+                        text.match(/^[A-Za-zÀ-žčšđćž\s\-\.\']+$/) && 
+                        !text.match(/^\d/) && 
+                        !text.toLowerCase().includes('team') &&
+                        !text.toLowerCase().includes('player')) {
+                        tablePlayerNames++;
+                    }
+                }
+                
+                // A player stats table should have multiple ratings and names
+                if (tableRatings >= 8 && tablePlayerNames >= 8) {
+                    playerTableFound = true;
+                    ratingCount += tableRatings;
+                    playerNameCount += tablePlayerNames;
+                }
+            }
+            
+            return {
+                hasPlayerTable: playerTableFound,
+                ratingCount: ratingCount,
+                playerNameCount: playerNameCount,
+                tableCount: tables.length
+            };
         });
 
-        await this.delay(2000);
-        return true; // Simplified - assume navigation worked if clicks succeeded
+        if (verification.hasPlayerTable) {
+            console.log(`✅ Navigation successful! Found player statistics table with ${verification.ratingCount} ratings and ${verification.playerNameCount} player names`);
+            return true;
+        } else {
+            console.log(`❌ Navigation failed. Found ${verification.tableCount} tables, ${verification.ratingCount} ratings, ${verification.playerNameCount} names`);
+            
+            // Take debug screenshot
+            try {
+                await this.page.screenshot({ 
+                    path: path.join(this.screenshotsPath, `debug-failed-navigation-${Date.now()}.png`)
+                });
+                console.log('📸 Debug screenshot taken');
+            } catch (e) {
+                console.log('⚠️  Could not take debug screenshot');
+            }
+            
+            return false;
+        }
     }
 
     async extractMariborPlayers() {
         return await this.page.evaluate(() => {
             const mariborPlayers = [];
-            const rows = document.querySelectorAll('tr, [class*="row"]');
+            
+            // First, find actual player statistics tables (not just any table)
+            const tables = document.querySelectorAll('table, [role="table"]');
+            let playerTable = null;
+            
+            for (const table of tables) {
+                const rows = table.querySelectorAll('tr');
+                let ratingCount = 0;
+                let nameCount = 0;
+                
+                // Count potential player data in this table
+                for (const row of rows) {
+                    const text = row.textContent || '';
+                    if (text.match(/\d\.\d/)) ratingCount++;
+                    if (text.match(/[A-Za-zÀ-žčšđćž]{3,}/)) nameCount++;
+                }
+                
+                // This looks like a player statistics table
+                if (ratingCount >= 5 && nameCount >= 5) {
+                    playerTable = table;
+                    break;
+                }
+            }
+            
+            if (!playerTable) {
+                console.log('No player statistics table found');
+                return [];
+            }
+            
+            console.log('Found player statistics table, extracting data...');
+            const rows = playerTable.querySelectorAll('tr');
             
             for (const row of rows) {
                 const rowText = row.textContent || '';
                 
-                // Skip non-player rows
-                if (rowText.length < 20 || !rowText.match(/\d\.\d/)) continue;
+                // Skip header rows and rows without ratings
+                if (rowText.length < 15 || !rowText.match(/\d\.\d/)) continue;
                 
-                // Extract player data
-                const cells = row.querySelectorAll('td, div, span');
+                // Must contain player-like data
+                if (!rowText.match(/[A-Za-zÀ-žčšđćž]{3,}/)) continue;
+                
+                const cells = row.querySelectorAll('td, th');
+                if (cells.length < 3) continue; // Need at least 3 columns for meaningful data
+                
                 let playerName = null;
                 let rating = null;
                 let minutes = 0;
                 let position = 'Unknown';
                 let isMariborPlayer = false;
                 
-                // Find Maribor logo (TASK 1: Only check for Maribor logo)
+                // Step 1: Check if this is a Maribor player row
                 const images = row.querySelectorAll('img');
                 for (const img of images) {
                     const src = img.src?.toLowerCase() || '';
@@ -386,15 +587,22 @@ class MariborScraper {
                     }
                 }
                 
-                // Only process if Maribor player (TASK 2: No fallbacks)
+                // Also check for text indicators of Maribor
+                if (!isMariborPlayer && rowText.toLowerCase().includes('maribor')) {
+                    isMariborPlayer = true;
+                }
+                
+                // Skip if not Maribor player
                 if (!isMariborPlayer) continue;
                 
-                // Extract player name (NOTE 3: Full name from 2nd column)
-                for (let i = 0; i < Math.min(cells.length, 3); i++) {
+                // Step 2: Extract player name (look in first few cells)
+                for (let i = 0; i < Math.min(cells.length, 4); i++) {
                     const text = cells[i].textContent?.trim();
                     if (text && text.length > 2 && text.length < 40 && 
                         text.match(/^[A-Za-zÀ-žčšđćž\s\-\.\']+$/) && 
-                        !text.match(/^\d/)) {
+                        !text.match(/^\d/) &&
+                        !text.toLowerCase().includes('team') &&
+                        !text.toLowerCase().includes('coach')) {
                         playerName = text;
                         break;
                     }
@@ -402,12 +610,11 @@ class MariborScraper {
                 
                 if (!playerName) continue;
                 
-                // Extract rating (NOTE 1: Player rating)
+                // Step 3: Extract rating (look for X.X pattern)
                 for (const cell of cells) {
                     const text = cell.textContent?.trim();
-                    const ratingMatch = text?.match(/^(\d\.\d)$/);
-                    if (ratingMatch) {
-                        const r = parseFloat(ratingMatch[1]);
+                    if (text && text.match(/^\d\.\d$/)) {
+                        const r = parseFloat(text);
                         if (r >= 5.0 && r <= 10.0) {
                             rating = r;
                             break;
@@ -415,31 +622,85 @@ class MariborScraper {
                     }
                 }
                 
-                if (!rating) continue;
+                if (!rating) continue; // Must have a rating to be valid
                 
-                // Extract minutes and position (NOTE 1: Minutes and position)
+                // Step 4: Enhanced position extraction
                 for (const cell of cells) {
-                    const text = cell.textContent?.trim();
+                    const text = cell.textContent?.trim() || '';
                     
-                    // Minutes
-                    const minutesMatch = text?.match(/^(\d+)'?$/);
-                    if (minutesMatch) {
-                        const m = parseInt(minutesMatch[1]);
-                        if (m >= 1 && m <= 120) minutes = m;
-                    }
-                    
-                    // Position
-                    if (text && text.match(/^[NFSMOVDG]$/)) {
+                    // Strategy 1: Single letter position codes (common in SofaScore)
+                    if (text.match(/^[NFSMOVDGKAC]$/)) {
                         const posMap = {
-                            'N': 'Forward', 'F': 'Forward',
-                            'S': 'Midfielder', 'M': 'Midfielder',
+                            'N': 'Forward', 'F': 'Forward', 'A': 'Forward',
+                            'S': 'Midfielder', 'M': 'Midfielder', 'C': 'Midfielder',
                             'O': 'Defender', 'D': 'Defender',
-                            'V': 'Goalkeeper', 'G': 'Goalkeeper'
+                            'V': 'Goalkeeper', 'G': 'Goalkeeper', 'K': 'Goalkeeper'
                         };
                         position = posMap[text] || text;
+                        break;
+                    }
+                    
+                    // Strategy 2: Full position names (English)
+                    const lowerText = text.toLowerCase();
+                    if (lowerText.includes('goalkeeper') || lowerText.includes('keeper')) {
+                        position = 'Goalkeeper';
+                        break;
+                    } else if (lowerText.includes('defender') || lowerText.includes('defence') || lowerText.includes('back')) {
+                        position = 'Defender';
+                        break;
+                    } else if (lowerText.includes('midfielder') || lowerText.includes('midfield') || lowerText.includes('centre')) {
+                        position = 'Midfielder';
+                        break;
+                    } else if (lowerText.includes('forward') || lowerText.includes('striker') || lowerText.includes('winger') || lowerText.includes('attack')) {
+                        position = 'Forward';
+                        break;
+                    }
+                    
+                    // Strategy 3: Slovenian position names
+                    if (lowerText.includes('vratar')) {
+                        position = 'Goalkeeper';
+                        break;
+                    } else if (lowerText.includes('branilec') || lowerText.includes('obramba')) {
+                        position = 'Defender';
+                        break;
+                    } else if (lowerText.includes('vezist') || lowerText.includes('sredina')) {
+                        position = 'Midfielder';
+                        break;
+                    } else if (lowerText.includes('napadalec') || lowerText.includes('napad')) {
+                        position = 'Forward';
+                        break;
+                    }
+                    
+                    // Strategy 4: Position abbreviations
+                    if (text.match(/^(GK|DEF|MID|FWD|ATT)$/i)) {
+                        const abbrevMap = {
+                            'GK': 'Goalkeeper',
+                            'DEF': 'Defender',
+                            'MID': 'Midfielder',
+                            'FWD': 'Forward',
+                            'ATT': 'Forward'
+                        };
+                        position = abbrevMap[text.toUpperCase()] || position;
+                        break;
                     }
                 }
                 
+                // Step 5: Extract minutes played
+                for (const cell of cells) {
+                    const text = cell.textContent?.trim();
+                    
+                    // Minutes played
+                    const minutesMatch = text?.match(/^(\d+)'?$/);
+                    if (minutesMatch) {
+                        const m = parseInt(minutesMatch[1]);
+                        if (m >= 1 && m <= 120) {
+                            minutes = m;
+                            break;
+                        }
+                    }
+                }
+                
+                // Add player to results
                 mariborPlayers.push({
                     name: playerName,
                     rating: rating,
@@ -447,8 +708,11 @@ class MariborScraper {
                     minutesPlayed: minutes,
                     isStartingXI: minutes >= 45
                 });
+                
+                console.log(`Extracted player: ${playerName} - Position: ${position} - Rating: ${rating}`);
             }
             
+            console.log(`Total Maribor players extracted: ${mariborPlayers.length}`);
             return mariborPlayers.sort((a, b) => b.rating - a.rating);
         });
     }
